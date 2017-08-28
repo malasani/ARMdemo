@@ -1,0 +1,146 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "type": "string",
+            "defaultValue": "myvm"
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_D1_v2",
+            "allowedValues": [
+                "Standard_D1_v2",
+                "Standard_D2_v2",
+                "Standard_D3_v2",
+                "Standard_D4_v2",
+                "Standard_D5_v2"
+            ]
+        },
+        "adminUsername": {
+            "type": "string"
+        },
+        "adminPassword": {
+            "type": "securestring"
+        },
+        "virtualNetwork": {
+            "type": "string",
+            "defaultValue": "MSConnect-CORP-USC-VNET-1"
+        },
+        "subnetName": {
+            "type": "string",
+            "defaultValue": "Subnet-1"
+        }
+    },
+    "variables": {
+        "storageAccount": "[concat('sdemo',uniqueString(resourceGroup().id))]",
+        "nicName": "[concat(parameters('vmName'),'-nic')]",
+        "virtualNetworkId": "[resourceId('ERNetwork','Microsoft.Network/virtualNetworks',parameters('virtualNetwork'))]",
+        "subnetref": "[concat(variables('virtualNetworkId'), '/subnets/', parameters('subnetName'))]",
+        "operatingSystemValues": {
+            "Server2012R2": {
+                "PublisherValue": "MicrosoftWindowsServer",
+                "OfferValue": "WindowsServer",
+                "SkuValue": "2012-R2-Datacenter"
+            },
+            "Server2016": {
+                "PublisherValue": "MicrosoftWindowsServer",
+                "OfferValue": "WindowsServer",
+                "SkuValue": "2016-Datacenter"
+            }
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2016-01-01",
+            "name": "[variables('storageAccount')]",
+            "kind": "Storage",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "properties": {},
+            "location": "[resourceGroup().location]"
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2017-06-01",
+            "name": "[variables('nicName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetref')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2016-04-30-preview",
+            "name": "[parameters('vmName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/',variables('nicName'))]",
+                "[concat('Microsoft.Storage/storageAccounts/',variables('storageAccount'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "adminUsername": "[parameters('adminUserName')]",
+                    "adminPassword": "[parameters('adminPassword')]",
+                    "computerName": "[parameters('vmName')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('operatingSystemValues').Server2016.PublisherValue]",
+                        "offer": "[variables('operatingSystemValues').Server2016.OfferValue]",
+                        "sku": "[variables('operatingSystemValues').Server2016.SkuValue]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "[parameters('vmName')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "vhd": {
+                            "uri": "[concat('http://',variables('storageAccount'),'.blob.core.windows.net/vhd/osdisk.vhd')]"
+                        }
+                    },
+                    "dataDisks": [
+                        {
+                            "name": "[concat(parameters('vmName'),'disk1')]",
+                            "caching": "ReadOnly",
+                            "createOption": "Empty",
+                            "lun": 1,
+                            "diskSizeGB": 1023,
+                            "vhd": {
+                                "uri": "[uri(reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccount')), '2016-01-01').primaryEndpoints.blob, concat('/vhds/',parameters('vmName'),'-datadisk.vhd'))]"
+                            }
+                        }
+                    ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicName'))]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": false
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {}
+}
